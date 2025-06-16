@@ -21,15 +21,14 @@ class BilingualDataset(Dataset):
         but often their IDs are the same across tokenizers trained together.
         the `dtype=torch.int64` is crucial for embedding layers.
         """
-        self.sos_token = torch.Tensor([tokenizer_src.token_to_id['[SOS]']], dtypes=torch.int64)
-        self.eos_token = torch.Tensor([tokenizer_src.token_to_id['[EOS]']], dtypes=torch.int64)
-        self.pad_token = torch.Tensor([tokenizer_src.token_to_id['[PAD]']], dtypes=torch.int64)
-         
+        self.sos_token = torch.tensor([tokenizer_src.token_to_id('[SOS]')], dtype=torch.int64)
+        self.eos_token = torch.tensor([tokenizer_src.token_to_id('[EOS]')], dtype=torch.int64)
+        self.pad_token = torch.tensor([tokenizer_src.token_to_id('[PAD]')], dtype=torch.int64)
 
     def __len__(self):
         return len(self.ds)
     
-    def __getItem__(self, index: Any) -> Any:
+    def __getitem__(self, index: Any) -> Any:
         src_target_pair = self.ds[index]
         src_text = src_target_pair['translation'][self.src_lang]
         tgt_text = src_target_pair['translation'][self.tgt_lang]
@@ -38,7 +37,7 @@ class BilingualDataset(Dataset):
         dec_input_tokens = self.tokenizer_tgt.encode(tgt_text).ids
 
         enc_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 2
-        dec_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 1
+        dec_num_padding_tokens = self.seq_len - len(dec_input_tokens) - 1
         
         if enc_num_padding_tokens < 0 or dec_num_padding_tokens < 0:
             raise ValueError('Sentence is too long')
@@ -57,7 +56,7 @@ class BilingualDataset(Dataset):
             [
                 self.sos_token,
                 torch.tensor(dec_input_tokens, dtype=torch.int64),
-                torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64)
+                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
             ]
         )
 
