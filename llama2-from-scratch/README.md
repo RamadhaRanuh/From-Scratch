@@ -1,6 +1,7 @@
 # Llama 2 from Scratch
-<img width="373" height="433" alt="1_CQs4ceLpN8tIN8QyezL2Ag" src="https://github.com/user-attachments/assets/d10e61de-3f9e-4d33-9697-d30333a36358" />
-
+<p align="center">
+  <img width="478" height="696" alt="image" src="https://github.com/user-attachments/assets/0a99a773-c2e3-4ac2-9221-3f346950c58e" />
+</p>
 This repository contains a from-scratch implementation of the Llama 2 language model architecture in PyTorch. The focus is on providing a clear, concise, and technically detailed codebase that explains the inner workings of the model. This documentation serves as a guide to the `model.py` script, breaking down each component of the Llama 2 architecture as implemented.
 
 ## Model Architecture Overview
