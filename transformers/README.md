@@ -1,4 +1,7 @@
 # Transformer from Scratch
+<p align="center">
+    <img width="1024" height="1077" alt="Transformer,_full_architecture" src="https://github.com/user-attachments/assets/b73dfe0f-ee81-4a78-b3bd-4bcfa5f0262c" />
+</p>
 
 This project is a comprehensive implementation of the Transformer model from the ground up, as detailed in the seminal paper "Attention Is All You Need." The entire architecture is built using PyTorch, with a focus on clarity and a modular structure. The primary application demonstrated in this codebase is Neural Machine Translation (NMT), specifically for translating from English to Indonesian.
 
