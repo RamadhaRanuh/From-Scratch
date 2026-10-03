@@ -240,7 +240,7 @@ class Transformer(nn.Module):
         return self.projection_layer(x)
     
 
-def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float=0.1, d_ff:int=2048) -> Transformer:
+def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float=0.1, d_ff:int=2048, share_weights: bool = True) -> Transformer:
     # Embedding layers
     src_embed = InputEmbeddings(d_model, src_vocab_size)
     tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
@@ -274,6 +274,13 @@ def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int
     # Create the projection layer
     projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
 
+    # Paper section 3.4: share one weight matrix between the embeddings and the pre-softmax linear layer.
+    # The paper shares it across source, target and projection because it uses a joint BPE vocabulary;
+    # here English and Indonesian have separate vocabularies, so only the target side can be tied.
+    # Both matrices are (tgt_vocab_size, d_model), so the projection reuses the embedding matrix directly.
+    if share_weights:
+        projection_layer.proj.weight = tgt_embed.embedding.weight
+
     # Create the transformer
     transformer = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
 
@@ -283,3 +290,8 @@ def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int
             nn.init.xavier_uniform_(p)
 
     return transformer
+
+
+def checkpoint_shares_weights(model_state_dict) -> bool:
+    # A checkpoint trained with share_weights=True stores the same tensor under both keys
+    return torch.equal(model_state_dict['tgt_embed.embedding.weight'], model_state_dict['projection_layer.proj.weight'])

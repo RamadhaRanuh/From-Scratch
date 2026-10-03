@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 
 from dataset import BilingualDataset, causal_mask
-from model import build_transformer
+from model import build_transformer, checkpoint_shares_weights
 
 from config import get_weight_file_path, get_config
 
@@ -91,8 +91,15 @@ def get_ds(config):
 
 
 def get_model(config, vocab_src_len, vocab_tgt_len):
-    model = build_transformer(vocab_src_len, vocab_tgt_len, config['seq_len'], config['seq_len'], config['d_model'])
+    model = build_transformer(vocab_src_len, vocab_tgt_len, config['seq_len'], config['seq_len'], config['d_model'], share_weights=config['share_weights'])
     return model
+
+
+def learning_rate(step: int, d_model: int, warmup_steps: int, factor: float = 1.0) -> float:
+    # Paper Eq. 3: lrate = d_model^-0.5 * min(step^-0.5, step * warmup_steps^-1.5)
+    # Rises linearly for warmup_steps, then decays proportionally to 1/sqrt(step). Steps are 1-based.
+    step = max(step, 1)
+    return factor * d_model ** -0.5 * min(step ** -0.5, step * warmup_steps ** -1.5)
 
 
 
@@ -110,16 +117,23 @@ def train_model(config):
     print('model written')
     writer = SummaryWriter(config['experiment_name'])
 
-    optimizer = torch.optim.Adam(model.parameters(), lr = config['lr'], eps=1e-9)
+    # The learning rate is set every step from the Eq. 3 schedule, so the value passed here is only a placeholder
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate(1, config['d_model'], config['warmup_steps'], config['lr_factor']), betas=config['adam_betas'], eps=config['adam_eps'])
     initial_epoch = 0
     global_step = 0
     if config['preload']:
         model_filename = get_weight_file_path(config, config['preload'])
         print(f'Preloading model {model_filename}')
         state = torch.load(model_filename, map_location=device)
+        if checkpoint_shares_weights(state['model_state_dict']) != config['share_weights']:
+            raise ValueError(f"{model_filename} was trained with share_weights={not config['share_weights']}; set config['share_weights'] to match")
         model.load_state_dict(state['model_state_dict'])
         initial_epoch = state['epoch'] + 1
         optimizer.load_state_dict(state['optimizer_state_dict'])
+        # Checkpoints from before the paper schedule saved other Adam settings; the config is the source of truth
+        for group in optimizer.param_groups:
+            group['betas'] = config['adam_betas']
+            group['eps'] = config['adam_eps']
         global_step = state['global_step']
 
     # Labels are target-language ids, so padding must be ignored using the target tokenizer's [PAD] id
@@ -152,7 +166,11 @@ def train_model(config):
             # Backpropagation the loss
             loss.backward()
 
-            # Update the weights
+            # Update the weights with the scheduled learning rate (global_step + 1 is the 1-based step number)
+            lr = learning_rate(global_step + 1, config['d_model'], config['warmup_steps'], config['lr_factor'])
+            for group in optimizer.param_groups:
+                group['lr'] = lr
+            writer.add_scalar('learning rate', lr, global_step)
             optimizer.step()
             optimizer.zero_grad()
 
