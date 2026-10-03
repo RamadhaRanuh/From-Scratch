@@ -44,16 +44,35 @@ def get_or_build_tokenizer(config, ds, lang):
 
     return tokenizer
 
+def load_raw_dataset(config):
+    lang_pair = f"{config['lang_src']}-{config['lang_tgt']}"
+    dataset_path = Path(config['dataset_cache'])
+    if dataset_path.exists():
+        print(f"--> Loading cached dataset from {dataset_path}...")
+        ds_full = load_from_disk(str(dataset_path))
+    else:
+        # First run: download once from the Hugging Face Hub, then cache in Arrow format for fast reloads
+        print(f"--> Downloading '{config['datasource']}' ({lang_pair}) and caching to {dataset_path}...")
+        ds_full = load_dataset(config['datasource'], lang_pair)
+        ds_full.save_to_disk(str(dataset_path))
+    return ds_full['train']
+
 def get_ds(config):
-    print(f"--> Attempting to load dataset 'Helsinki-NLP/opus-100' for language pair {config['lang_src']}-{config['lang_tgt']}...")
-    dataset_path = './opus-100-fast-cache'
-    ds_full = load_from_disk(dataset_path) if Path(dataset_path).exists() else None
-    ds_raw = ds_full['train']
+    ds_raw = load_raw_dataset(config)
     print(f"--> Dataset loaded with {len(ds_raw)} samples.")
     # Build Tokenizers
 
     tokenizer_src = get_or_build_tokenizer(config, ds_raw, config['lang_src'])
     tokenizer_tgt = get_or_build_tokenizer(config, ds_raw, config['lang_tgt'])
+
+    # Drop pairs that cannot fit in seq_len: the encoder needs room for [SOS] + [EOS], the decoder for [SOS] (or [EOS] in the label)
+    src_lengths = [len(e.ids) for e in tokenizer_src.encode_batch([item[config['lang_src']] for item in ds_raw['translation']])]
+    tgt_lengths = [len(e.ids) for e in tokenizer_tgt.encode_batch([item[config['lang_tgt']] for item in ds_raw['translation']])]
+    keep = [i for i, (s, t) in enumerate(zip(src_lengths, tgt_lengths)) if s + 2 <= config['seq_len'] and t + 1 <= config['seq_len']]
+    print(f"--> Dropped {len(ds_raw) - len(keep)} pairs longer than seq_len={config['seq_len']}.")
+    print(f'Max length of source sentence: {max(src_lengths)}')
+    print(f'Max length of target sentence: {max(tgt_lengths)}')
+    ds_raw = ds_raw.select(keep)
 
     # keep 90% training and 10% for validation
     train_ds_size = int(0.9 * len(ds_raw))
@@ -64,18 +83,6 @@ def get_ds(config):
     train_ds = BilingualDataset(train_ds_raw, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
     val_ds = BilingualDataset(val_ds_raw, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
 
-
-    max_len_src = 0
-    max_len_tgt = 0
-
-    for item in ds_raw:
-        src_ids = tokenizer_src.encode(item['translation'][config['lang_src']]).ids
-        tgt_ids = tokenizer_src.encode(item['translation'][config['lang_tgt']]).ids
-        max_len_src = max(max_len_src, len(src_ids))
-        max_len_tgt = max(max_len_tgt, len(tgt_ids))
-
-    print(f'Max length of source sentence: {max_len_src}')
-    print(f'Max length of target sentence: {max_len_tgt}')
 
     train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
     val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)

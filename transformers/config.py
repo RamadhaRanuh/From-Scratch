@@ -9,6 +9,8 @@ def get_config():
         "d_model": 512,
         "lang_src": "en",
         "lang_tgt": "id",
+        "datasource": "Helsinki-NLP/opus-100",
+        "dataset_cache": "opus-100-fast-cache",
         "model_folder": "weights",
         "model_filename": "tmodel_",
         "preload": None,
