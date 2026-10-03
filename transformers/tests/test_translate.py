@@ -1,8 +1,10 @@
+import os
+
 import pytest
 import torch
 
 from model import build_transformer
-from translate import encode_source, greedy_decode, load_model, translate_sentence
+from translate import encode_source, greedy_decode, latest_checkpoint, load_model, translate_sentence
 
 SEQ_LEN = 12
 
@@ -54,3 +56,12 @@ def test_load_model_restores_tied_and_untied_checkpoints(tmp_path, tokenizer_src
     assert (loaded.projection_layer.proj.weight is loaded.tgt_embed.embedding.weight) == share_weights
     for (name, a), b in zip(model.state_dict().items(), loaded.state_dict().values()):
         assert torch.equal(a, b), name
+
+
+def test_latest_checkpoint_is_most_recently_written(tmp_path):
+    config = {'model_folder': str(tmp_path), 'model_filename': 'tmodel_'}
+    for i, name in enumerate(['tmodel_interrupt.pt', 'tmodel_00.pt', 'tmodel_01.pt']):
+        path = tmp_path / name
+        path.write_bytes(b'')
+        os.utime(path, (1000 + i, 1000 + i))
+    assert latest_checkpoint(config).name == 'tmodel_01.pt'

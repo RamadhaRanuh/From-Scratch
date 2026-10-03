@@ -61,17 +61,18 @@ def load_model(checkpoint_path, config, tokenizer_src, tokenizer_tgt, device):
 
 
 def latest_checkpoint(config):
-    checkpoints = sorted(Path(config['model_folder']).glob(f"{config['model_filename']}*.pt"))
+    checkpoints = list(Path(config['model_folder']).glob(f"{config['model_filename']}*.pt"))
     if not checkpoints:
         raise FileNotFoundError(f"No checkpoints in {config['model_folder']}/; train first or pass --checkpoint")
-    return checkpoints[-1]
+    # Most recently written, not last by name: 'tmodel_interrupt.pt' would sort after 'tmodel_19.pt'
+    return max(checkpoints, key=lambda path: path.stat().st_mtime)
 
 
 def main():
     config = get_config()
     parser = argparse.ArgumentParser(description=f"Translate {config['lang_src']} -> {config['lang_tgt']} with a trained Transformer")
     parser.add_argument('text', help='sentence to translate')
-    parser.add_argument('--checkpoint', help='path to a .pt checkpoint (default: last one in the weights folder)')
+    parser.add_argument('--checkpoint', help='path to a .pt checkpoint (default: the most recently written one in the weights folder)')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
