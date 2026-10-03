@@ -93,21 +93,21 @@ Code: [`InputEmbeddings`](model.py#L8).
 
 Attention, as defined below, treats its input as a **set**: shuffle the words and every output is shuffled the same way, with no other change. Word order has to be injected explicitly. The paper adds a fixed **sinusoidal positional encoding** to each embedding:
 
-$$
+```math
 PE_{(pos,\,2i)} = \sin\!\left(\frac{pos}{10000^{2i/d_{model}}}\right), \qquad
 PE_{(pos,\,2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d_{model}}}\right)
-$$
+```
 
 Here $pos$ is the token's position and $i$ indexes pairs of dimensions. Each pair of dimensions is a sine/cosine wave with its own frequency $\omega_i = 10000^{-2i/d_{model}}$. The wavelengths form a geometric progression "from $2\pi$ to $10000 \cdot 2\pi$". The low dimensions change quickly from one position to the next, the high dimensions slowly, like the hands of a clock.
 
 **Why sinusoids?** The authors chose them because "for any fixed offset $k$, $PE_{pos+k}$ can be represented as a linear function of $PE_{pos}$." You can check this with the angle-addition formulas. For a single frequency $\omega$:
 
-$$
+```math
 \begin{pmatrix} \sin(\omega(pos+k)) \\ \cos(\omega(pos+k)) \end{pmatrix}
 =
 \begin{pmatrix} \cos(\omega k) & \sin(\omega k) \\ -\sin(\omega k) & \cos(\omega k) \end{pmatrix}
 \begin{pmatrix} \sin(\omega\, pos) \\ \cos(\omega\, pos) \end{pmatrix}
-$$
+```
 
 Moving $k$ positions forward is a **rotation** whose angle depends only on $k$, not on $pos$. The hope was that this makes relative positions easy for the model to learn. (Llama 2's rotary embeddings take this idea further and apply the rotation directly to queries and keys; see the [Llama 2 report](../llama2-from-scratch/REPORT.md).)
 
@@ -115,9 +115,9 @@ The paper also tried **learned** position embeddings and got "nearly identical r
 
 **Implementation.** The table is computed once, for all positions up to `seq_len`, and stored as a buffer: a tensor that is saved with the model but not trained. Computing $10000^{-2i/d}$ through `exp` and `log` is numerically safer than computing the power directly:
 
-$$
+```math
 10000^{-2i/d_{model}} = \exp\!\left(2i \cdot \frac{-\ln 10000}{d_{model}}\right)
-$$
+```
 
 ```python
 # model.py — PositionEncoding.__init__
@@ -139,9 +139,9 @@ An analogy: you (the query) walk into a library and compare your question with e
 
 With all queries, keys and values stacked into matrices $Q \in \mathbb{R}^{L_q \times d_k}$, $K \in \mathbb{R}^{L_k \times d_k}$ and $V \in \mathbb{R}^{L_k \times d_v}$:
 
-$$
-\operatorname{Attention}(Q, K, V) = \operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V \tag{1}
-$$
+```math
+\mathrm{Attention}(Q, K, V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V \tag{1}
+```
 
 Step by step:
 
@@ -152,9 +152,9 @@ Step by step:
 
 **Why divide by $\sqrt{d_k}$?** The paper's footnote 1 explains. Suppose the components of $q$ and $k$ are independent, with mean 0 and variance 1. Then
 
-$$
+```math
 q \cdot k = \sum_{i=1}^{d_k} q_i k_i \quad\text{has mean } 0 \text{ and variance } d_k .
-$$
+```
 
 With $d_k = 64$, raw scores have a standard deviation of 8. Softmax over numbers that far apart is nearly one-hot, and the paper notes this pushes softmax "into regions where it has extremely small gradients". Dividing by $\sqrt{d_k}$ brings the variance back to 1.
 
@@ -177,11 +177,11 @@ Code: [`MultiHeadAttentionBlock.attention`](model.py#L103). The dropout on the a
 
 A single attention operation produces one weighted average per position, and averaging blurs things together. The paper's argument: "With a single attention head, averaging inhibits" attending to several things at once, for example to a verb's subject and its object. **Multi-head attention** runs $h$ attention operations in parallel, each on its own learned projection of the input:
 
-$$
-\operatorname{MultiHead}(Q, K, V) = \operatorname{Concat}(\text{head}_1, \dots, \text{head}_h)\, W^O,
+```math
+\mathrm{MultiHead}(Q, K, V) = \mathrm{Concat}(\text{head}_1, \dots, \text{head}_h)\, W^O,
 \qquad
-\text{head}_i = \operatorname{Attention}(QW_i^Q,\; KW_i^K,\; VW_i^V)
-$$
+\text{head}_i = \mathrm{Attention}(QW_i^Q,\; KW_i^K,\; VW_i^V)
+```
 
 with $W_i^Q, W_i^K \in \mathbb{R}^{d_{model} \times d_k}$, $W_i^V \in \mathbb{R}^{d_{model} \times d_v}$ and $W^O \in \mathbb{R}^{h d_v \times d_{model}}$. The base model uses $h = 8$ and $d_k = d_v = 512/8 = 64$. Because each head is $h$ times narrower, "the total computational cost is similar to that of single-head attention with full dimensionality."
 
@@ -248,9 +248,9 @@ The decoder's mask is the logical AND of this matrix with the target padding mas
 
 After attention has mixed information **between** positions, each position is processed **on its own** by a small two-layer network:
 
-$$
-\operatorname{FFN}(x) = \max(0,\; xW_1 + b_1)\,W_2 + b_2 \tag{2}
-$$
+```math
+\mathrm{FFN}(x) = \max(0,\; xW_1 + b_1)\,W_2 + b_2 \tag{2}
+```
 
 The inner layer is four times wider ($d_{ff} = 2048$) than the model width, with a ReLU in between. The same weights are used at every position, which the paper compares to "two convolutions with kernel size 1". Each layer has its own weights. Attention decides *what information to gather*; the FFN is where most per-token computation happens. It holds two thirds of each encoder layer's parameters.
 
@@ -265,29 +265,29 @@ Code: [`FeedForwardBlock`](model.py#L71). The dropout between the two layers is 
 
 Every sub-layer (attention or FFN) is wrapped in a **residual connection** followed by **layer normalization**. The paper writes the output of each sub-layer as
 
-$$
-\operatorname{LayerNorm}(x + \operatorname{Sublayer}(x)),
-$$
+```math
+\mathrm{LayerNorm}(x + \mathrm{Sublayer}(x)),
+```
 
-and §5.4 adds dropout on the sub-layer's output "before it is added to the sub-layer input and normalized". In full: $\operatorname{LayerNorm}(x + \operatorname{Dropout}(\operatorname{Sublayer}(x)))$.
+and §5.4 adds dropout on the sub-layer's output "before it is added to the sub-layer input and normalized". In full: $\mathrm{LayerNorm}(x + \mathrm{Dropout}(\mathrm{Sublayer}(x)))$.
 
 - The **residual** $x + \dots$ gives gradients a direct path through the network, so a 6-layer stack (12 or 18 sub-layers) can be trained at all.
 - **Layer normalization** rescales each token's vector to mean 0 and variance 1, then applies a learned scale $\gamma$ (`alpha` in the code) and shift $\beta$ (`bias`):
 
-$$
-\operatorname{LayerNorm}(x) = \gamma \odot \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta,
+```math
+\mathrm{LayerNorm}(x) = \gamma \odot \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta,
 \qquad \mu = \frac{1}{d}\sum_j x_j,\quad \sigma^2 = \frac{1}{d}\sum_j (x_j - \mu)^2
-$$
+```
 
 ### Pre-norm vs. post-norm: a deliberate deviation
 
 This repo puts the normalization **inside** the residual branch, an arrangement called **Pre-LN**:
 
-$$
-\text{paper (Post-LN):}\quad x_{l+1} = \operatorname{LayerNorm}(x_l + \operatorname{Sublayer}(x_l))
+```math
+\text{paper (Post-LN):}\quad x_{l+1} = \mathrm{LayerNorm}(x_l + \mathrm{Sublayer}(x_l))
 \qquad
-\text{this repo (Pre-LN):}\quad x_{l+1} = x_l + \operatorname{Sublayer}(\operatorname{LayerNorm}(x_l))
-$$
+\text{this repo (Pre-LN):}\quad x_{l+1} = x_l + \mathrm{Sublayer}(\mathrm{LayerNorm}(x_l))
+```
 
 ```python
 # model.py — ResidualConnection.forward
@@ -390,9 +390,9 @@ flowchart LR
 
 The loss is the cross-entropy between the predicted distribution and the label at every non-padding position. The paper uses **label smoothing** with $\epsilon_{ls} = 0.1$. Instead of demanding 100% probability on the correct token, the target distribution becomes
 
-$$
+```math
 q(k) = (1 - \epsilon_{ls})\,\mathbb{1}[k = y] + \frac{\epsilon_{ls}}{V}
-$$
+```
 
 (this is PyTorch's form, which spreads $\epsilon_{ls}$ evenly over all $V$ classes). The paper notes: "This hurts perplexity, as the model learns to be more unsure, but improves accuracy and BLEU score."
 
@@ -406,11 +406,11 @@ loss = loss_fn(proj_output.view(-1, tgt_vocab_size), label.view(-1))
 
 The paper trains with Adam ($\beta_1 = 0.9$, $\beta_2 = 0.98$, $\epsilon = 10^{-9}$) and a learning rate that changes every step:
 
-$$
+```math
 lrate = d_{model}^{-0.5} \cdot \min\!\left(step^{-0.5},\; step \cdot warmup\_steps^{-1.5}\right) \tag{3}
-$$
+```
 
-with $warmup\_steps = 4000$. The rate **rises linearly** for 4000 steps, then **decays** like $1/\sqrt{step}$. The two branches of the `min` meet exactly at $step = warmup\_steps$. For $d_{model} = 512$:
+with `warmup_steps = 4000`. The rate **rises linearly** for 4000 steps, then **decays** like $1/\sqrt{step}$. The two branches of the `min` meet exactly at `step = warmup_steps`. For $d_{model} = 512$:
 
 | step | 1 | 1,000 | 4,000 (peak) | 16,000 | 100,000 |
 |---|---|---|---|---|---|

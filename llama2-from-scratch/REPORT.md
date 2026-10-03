@@ -122,11 +122,11 @@ prompt_tokens = [self.tokenizer.encode(prompt, out_type=int, add_bos=True, add_e
 
 **RMSNorm.** LayerNorm does two things: it *re-centers* (subtracts the mean) and *re-scales* (divides by the standard deviation). [RMSNorm] hypothesises "that the re-scaling invariance is the reason for success of LayerNorm, rather than re-centering invariance", and drops the re-centering:
 
-$$
-\operatorname{RMSNorm}(a)_i = \frac{a_i}{\operatorname{RMS}(a)}\, g_i,
+```math
+\mathrm{RMSNorm}(a)_i = \frac{a_i}{\mathrm{RMS}(a)}\, g_i,
 \qquad
-\operatorname{RMS}(a) = \sqrt{\frac{1}{n}\sum_{j=1}^{n} a_j^2 + \epsilon}
-$$
+\mathrm{RMS}(a) = \sqrt{\frac{1}{n}\sum_{j=1}^{n} a_j^2 + \epsilon}
+```
 
 The learned gain $g$ (`weight`, initialised to 1) is the only parameter; there is no bias. Skipping the mean makes it slightly cheaper, and it works as well in practice. Llama uses $\epsilon = 10^{-5}$ (`norm_eps`).
 
@@ -150,9 +150,9 @@ Code: [`RMSNorm`](model.py#L63). Each block has two (`attention_norm`, `ffn_norm
 
 Attention scores are dot products $q_m \cdot k_n$ between a query at position $m$ and a key at position $n$. What usually matters is the **relative** distance $m - n$ ("the word two positions back"), not the absolute positions. [RoPE] (§3.1) looks for a way to encode position such that
 
-$$
+```math
 \langle f_q(x_m, m),\, f_k(x_n, n) \rangle = g(x_m, x_n, m - n),
-$$
+```
 
 that is, the score depends on the two tokens' contents and **only** on their offset.
 
@@ -162,11 +162,11 @@ The 2017 sinusoidal encoding is *added* to the embeddings once, at the bottom of
 
 Take a 2-dimensional query $q = (q_1, q_2)$ and view it as the complex number $q_1 + i q_2$. Multiplying by $e^{i m \theta}$ **rotates** it by the angle $m\theta$ without changing its length. Do the same to the key at position $n$. For 2D vectors, the dot product equals the real part of one complex number times the conjugate of the other, so
 
-$$
+```math
 \langle q e^{i m\theta},\; k e^{i n\theta} \rangle
-= \operatorname{Re}\!\left[ q e^{i m\theta}\; \overline{k e^{i n\theta}} \right]
-= \operatorname{Re}\!\left[ q \bar{k}\; e^{i (m-n)\theta} \right].
-$$
+= \mathrm{Re}\!\left[ q e^{i m\theta}\; \overline{k e^{i n\theta}} \right]
+= \mathrm{Re}\!\left[ q \bar{k}\; e^{i (m-n)\theta} \right].
+```
 
 The absolute positions cancel and only $m - n$ remains ([RoPE] Eq. 12 and Eq. 16). Geometrically, if you rotate both arrows, the angle *between* them only changes by the difference of the rotations.
 
@@ -174,13 +174,13 @@ The absolute positions cancel and only $m - n$ remains ([RoPE] Eq. 12 and Eq. 16
 
 A head vector has $d = 128$ dimensions, not 2. RoPE splits it into $d/2 = 64$ **pairs of adjacent dimensions** $(x_1, x_2), (x_3, x_4), \dots$ and rotates pair $i$ at its own speed $\theta_i$ ([RoPE] Eq. 15):
 
-$$
+```math
 \Theta = \left\{\, \theta_i = 10000^{-2(i-1)/d},\;\; i = 1, 2, \dots, d/2 \,\right\}
-$$
+```
 
 These are the same frequencies as the 2017 sinusoidal encoding. Pair 1 rotates by 1 radian per position; pair 64 rotates very slowly. Fast pairs distinguish neighbouring positions, slow pairs track long distances. As a matrix, the rotation is block-diagonal with one $2\times2$ rotation per pair:
 
-$$
+```math
 R_{\Theta, m} =
 \begin{pmatrix}
 \cos m\theta_1 & -\sin m\theta_1 & & \\
@@ -191,7 +191,7 @@ R_{\Theta, m} =
 \end{pmatrix},
 \qquad
 q_m^\top k_n = (R_m W_q x_m)^\top (R_n W_k x_n) = x_m^\top W_q^\top R_{n-m} W_k x_n
-$$
+```
 
 Rotations are orthogonal, so RoPE never changes vector lengths.
 
@@ -226,7 +226,7 @@ The tests in [`tests/test_model.py`](tests/test_model.py) check the formula for 
 
 ## 7. Self-attention with grouped-query attention (GQA)
 
-The attention computation itself is unchanged from 2017: $\operatorname{softmax}(QK^\top / \sqrt{d_{head}} + \text{mask})\,V$, per head, followed by an output projection `wo`. What changes is **how many key and value heads** there are.
+The attention computation itself is unchanged from 2017: $\mathrm{softmax}(QK^\top / \sqrt{d_{head}} + \text{mask}) V$, per head, followed by an output projection `wo`. What changes is **how many key and value heads** there are.
 
 - **Multi-head attention (MHA)**: every query head has its own key and value head. Used by Llama 2 7B and 13B.
 - **Multi-query attention (MQA)**: all query heads share a single key/value head. Much less memory, but some loss of quality.
@@ -339,11 +339,11 @@ Because the cache is allocated for `max_batch_size × max_seq_len` up front, cho
 
 [Llama 1] §2.2: "We replace the ReLU non-linearity by the SwiGLU activation function, introduced by Shazeer (2020) to improve the performance. We use a dimension of $\frac{2}{3}4d$ instead of $4d$ as in PaLM."
 
-**Gated linear units.** Instead of passing one projection through a nonlinearity, a GLU computes **two** projections and multiplies them element-wise, so one acts as a learned *gate* on the other. SwiGLU uses the Swish (SiLU) function, $\operatorname{Swish}(x) = x \cdot \sigma(x)$, as the gate's nonlinearity ([SwiGLU] Eq. 5–6):
+**Gated linear units.** Instead of passing one projection through a nonlinearity, a GLU computes **two** projections and multiplies them element-wise, so one acts as a learned *gate* on the other. SwiGLU uses the Swish (SiLU) function, $\mathrm{Swish}(x) = x \cdot \sigma(x)$, as the gate's nonlinearity ([SwiGLU] Eq. 5–6):
 
-$$
-\operatorname{FFN}_{\text{SwiGLU}}(x) = \big(\operatorname{Swish}(xW_1) \otimes xW_3\big)\, W_2
-$$
+```math
+\mathrm{FFN}_{\text{SwiGLU}}(x) = \big(\mathrm{Swish}(xW_1) \otimes xW_3\big)\, W_2
+```
 
 $W_1$ is the gate, $W_3$ the "up" projection and $W_2$ the "down" projection. These are the names `w1`, `w3`, `w2` in Meta's checkpoints.
 
@@ -370,10 +370,10 @@ Both values match the released checkpoints (checked in `test_swiglu_hidden_size_
 
 Each [`TransformerBlock`](model.py#L205) is two pre-normalized residual sub-layers:
 
-$$
-h = x + \operatorname{Attention}(\operatorname{RMSNorm}(x)), \qquad
-\text{out} = h + \operatorname{FFN}(\operatorname{RMSNorm}(h))
-$$
+```math
+h = x + \mathrm{Attention}(\mathrm{RMSNorm}(x)), \qquad
+\text{out} = h + \mathrm{FFN}(\mathrm{RMSNorm}(h))
+```
 
 ```python
 # model.py — TransformerBlock.forward
@@ -419,9 +419,9 @@ The model outputs **logits**, one score per vocabulary token, for the next posit
 
 Dividing logits by a temperature $T$ before the softmax controls how adventurous sampling is:
 
-$$
+```math
 p_i = \frac{\exp(z_i / T)}{\sum_j \exp(z_j / T)}
-$$
+```
 
 $T < 1$ sharpens the distribution towards the most likely token, $T > 1$ flattens it, and $T \to 0$ is greedy decoding (`argmax`; pass `--temperature 0`). Meta's default is $T = 0.6$.
 
