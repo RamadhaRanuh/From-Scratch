@@ -1,5 +1,9 @@
 # Llama 2 from Scratch
 
+<p align="center">
+  <img width="478" height="696" alt="Llama 2 architecture" src="https://github.com/user-attachments/assets/0a99a773-c2e3-4ac2-9221-3f346950c58e" />
+</p>
+
 A from-scratch PyTorch implementation of the Llama 2 architecture that loads Meta's original weights and generates text. The whole model is in one file ([`model.py`](model.py), about 280 lines), and text generation with top-p sampling is in another ([`inference.py`](inference.py)).
 
 - **How the model works**, following the papers (RMSNorm, rotary embeddings, grouped-query attention, KV cache, SwiGLU, top-p sampling): see **[REPORT.md](REPORT.md)**.

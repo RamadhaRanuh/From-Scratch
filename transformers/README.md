@@ -1,4 +1,7 @@
 # Transformer from Scratch
+<p align="center">
+    <img width="1024" height="1077" alt="Transformer,_full_architecture" src="https://github.com/user-attachments/assets/b73dfe0f-ee81-4a78-b3bd-4bcfa5f0262c" />
+</p>
 
 A from-scratch PyTorch implementation of the original Transformer from *Attention Is All You Need* (Vaswani et al., 2017), trained for **English → Indonesian** translation on the [OPUS-100](https://huggingface.co/datasets/Helsinki-NLP/opus-100) corpus.
 
