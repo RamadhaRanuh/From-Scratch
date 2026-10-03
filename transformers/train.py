@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 
 from dataset import BilingualDataset, causal_mask
 from model import build_transformer, checkpoint_shares_weights
+from translate import greedy_decode
 
 from config import get_weight_file_path, get_config
 
@@ -103,18 +104,38 @@ def learning_rate(step: int, d_model: int, warmup_steps: int, factor: float = 1.
 
 
 
+def run_validation(model, val_dataloader, tokenizer_tgt, max_len, device, print_msg, global_step, writer, num_examples=2):
+    # Translate a few held-out sentences with greedy decoding so progress is visible beyond the loss curve
+    model.eval()
+    sos_id, eos_id = tokenizer_tgt.token_to_id('[SOS]'), tokenizer_tgt.token_to_id('[EOS]')
+    with torch.no_grad():
+        for count, batch in enumerate(val_dataloader, start=1):
+            encoder_input = batch['encoder_input'].to(device) # (1, seq_len)
+            encoder_mask = batch['encoder_mask'].to(device) # (1, 1, 1, seq_len)
+            model_out = greedy_decode(model, encoder_input, encoder_mask, sos_id, eos_id, max_len, device)
+            predicted = tokenizer_tgt.decode(model_out.tolist())
+
+            print_msg('-' * 80)
+            print_msg(f"SOURCE:    {batch['src_text'][0]}")
+            print_msg(f"TARGET:    {batch['tgt_text'][0]}")
+            print_msg(f"PREDICTED: {predicted}")
+            # TensorBoard renders text as Markdown; two trailing spaces + newline make a line break
+            text = f"**source:** {batch['src_text'][0]}  \n**target:** {batch['tgt_text'][0]}  \n**predicted:** {predicted}"
+            writer.add_text(f'validation/example_{count}', text, global_step)
+            if count == num_examples:
+                break
+    writer.flush()
+
+
 def train_model(config):
     # Define the device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Using device {device}')
 
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
-    print('testing model folder:', config['model_folder'])
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
-    print(train_dataloader)
     # Tensorboard
     model = get_model(config, tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size()).to(device)
-    print('model written')
     writer = SummaryWriter(config['experiment_name'])
 
     # The learning rate is set every step from the Eq. 3 schedule, so the value passed here is only a placeholder
@@ -175,6 +196,8 @@ def train_model(config):
             optimizer.zero_grad()
 
             global_step += 1
+
+        run_validation(model, val_dataloader, tokenizer_tgt, config['seq_len'], device, batch_iterator.write, global_step, writer)
 
         # save the model at the end of every epoch
         model_filename = get_weight_file_path(config, f'{epoch:02d}')
