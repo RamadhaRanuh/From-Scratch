@@ -1,0 +1,5 @@
+# Meta Llama 2 download (gated; never commit)
+llama-2-*/
+*.pth
+tokenizer.model
+tokenizer_checklist.chk
